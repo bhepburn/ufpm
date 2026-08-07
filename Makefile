@@ -45,5 +45,3 @@ define Package/ufpm/install
 	$(INSTALL_DATA) $(PKG_INSTALL_DIR)/usr/lib/ucode/uht.so $(1)/usr/lib/ucode/
 	$(CP) ./files/* $(1)/
 endef
-
-$(eval $(call BuildPackage,ufpm))

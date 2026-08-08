@@ -1,6 +1,6 @@
 include $(TOPDIR)/rules.mk
 
-PKG_NAME:=ufp
+PKG_NAME:=ufpm
 PKG_RELEASE:=1
 
 PKG_LICENSE:=GPL-2.0
@@ -22,43 +22,25 @@ include $(INCLUDE_DIR)/host-build.mk
 include $(INCLUDE_DIR)/package.mk
 include $(INCLUDE_DIR)/cmake.mk
 
-define Package/ufp
+define Package/ufpm
   SECTION:=utils
   CATEGORY:=Utilities
   TITLE:=Device fingerprinting daemon
   DEPENDS:=+ucode +ucode-mod-fs +ucode-mod-struct +libubox +udhcpsnoop +unetmsg
 endef
 
-define Package/ufp-neigh
-  SECTION:=utils
-  CATEGORY:=Utilities
-  TITLE:=Device fingerprinting daemon (OUI plugin)
-  DEPENDS:=+ufp
-endef
-
-define Package/ufp/conffiles
-/etc/config/ufp
+define Package/ufpm/conffiles
+/etc/config/ufpm
 endef
 
 CMAKE_HOST_OPTIONS += \
 	-DCMAKE_SKIP_RPATH=FALSE \
 	-DCMAKE_INSTALL_RPATH="${STAGING_DIR_HOST}/lib"
 
-define Package/ufp/install
-	$(INSTALL_DIR) $(1)/usr/lib/ucode $(1)/usr/share/ufp $(1)/usr/sbin/
+define Package/ufpm/install
+	$(INSTALL_DIR) $(1)/usr/lib/ucode $(1)/usr/share/ufpm $(1)/usr/sbin/
 	$(INSTALL_DATA) $(PKG_INSTALL_DIR)/usr/lib/ucode/uht.so $(1)/usr/lib/ucode/
-	$(UCODE) $(PKG_BUILD_DIR)/scripts/convert-devices.uc $(1)/usr/share/ufp/devices.bin $(PKG_BUILD_DIR)/data/*.json
-	$(INSTALL_BIN) $(PKG_BUILD_DIR)/ufpd $(1)/usr/sbin
-	$(INSTALL_DATA) $(PKG_BUILD_DIR)/plugins/* $(1)/usr/share/ufp
-	$(CP) ./files/* $(1)/
 endef
 
-define Package/ufp-neigh/install
-	$(INSTALL_DIR) $(1)/usr/share/ufp/db/
-	$(INSTALL_DATA) $(PKG_BUILD_DIR)/modules/plugin_neigh.uc $(1)/usr/share/ufp
-	$(UCODE) $(PKG_BUILD_DIR)/scripts/convert-devices.uc $(1)/usr/share/ufp/db/oui.bin $(PKG_BUILD_DIR)/modules/oui.json
-endef
-
-$(eval $(call BuildPackage,ufp))
-$(eval $(call BuildPackage,ufp-neigh))
+$(eval $(call BuildPackage,ufpm))
 $(eval $(call HostBuild))

@@ -4,13 +4,7 @@
 START=80
 
 USE_PROCD=1
-PROG=/usr/sbin/ufpmd
-UPDATE_OUI=/usr/share/ufpm/scripts/update-oui.uc
-
-boot() {
-	ucode "$UPDATE_OUI" || return 1
-	start "$@"
-}
+PROG=/usr/sbin/ufpd
 
 start_service() {
 	procd_open_instance

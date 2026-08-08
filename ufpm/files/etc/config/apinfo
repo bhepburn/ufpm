@@ -1,0 +1,15 @@
+
+config global
+	option interval '5'
+	option path '/tmp/apinfo'
+	option webhook ''
+	list notificationtypes 'device_offline'
+	list notificationtypes 'device_online'
+	list notificationtypes 'radio_down'
+	list notificationtypes 'radio_up'
+
+config host 'host1'
+	option enabled '0'
+	option name 'OpenWrt'
+	option ipaddr '192.168.1.1'
+	option port '22'

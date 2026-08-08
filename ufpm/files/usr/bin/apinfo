@@ -1,0 +1,199 @@
+#!/bin/sh
+# shellcheck shell=ash
+
+BASEPATH="/tmp/apinfo"
+ADDITIONALSCRIPT="/root/apinfo.sh"
+
+# shellcheck source=/dev/null
+. /lib/functions.sh
+# shellcheck source=/dev/null
+. /usr/share/libubox/jshn.sh
+
+# Read global UCI config once at startup
+WEBHOOK=$(uci -q get apinfo.@global[0].webhook)
+NOTIFICATION_TYPES=$(uci -q get apinfo.@global[0].notificationtypes)
+T=$(uci -q get apinfo.@global[0].path)
+[ -n "$T" ] && BASEPATH="$T"
+
+# Send a webhook notification if the given type is enabled and a URL is configured
+# $1: notification type (must appear in notificationtypes), $2: ipaddr, $3: name
+notify() {
+	local action=$(echo "$1" | tr '_' ' ')
+	local ipaddr=$2
+	local name=$3
+
+	logger -p notice -t apinfo "$action reported for $name ($ipaddr)"
+
+	[ -z "$WEBHOOK" ] && return 0
+	echo "$NOTIFICATION_TYPES" | grep -qw "$1" || return 0
+
+	{
+		curl -s -o /dev/null -X POST "$WEBHOOK" \
+			-H 'Content-Type: application/json' \
+			-d "{\"value1\":\"${action}\",\"value2\":\"${ipaddr}\",\"value3\":\"${name}\"}" \
+			|| logger -p error -t apinfo "unable to fire webhook call"
+	} &
+}
+
+# Check radio connectivity status based on JSON data
+check_connectivity() {
+	local ipaddr=$1
+	local cfg=$2
+	local radio_name=$3
+	local disabled=$4
+	local up=$5
+	local client_count=$6
+
+	local last_state_file="${BASEPATH}/${ipaddr}-${cfg}-${radio_name}"
+	local last_state=""
+
+	# Read the last state from the file
+	if [ -f "$last_state_file" ]; then
+		last_state=$(cat "$last_state_file")
+	fi
+
+	# Guard: ensure client_count is a valid non-negative integer
+	case "$client_count" in
+		''|*[!0-9]*) client_count=0 ;;
+	esac
+
+	# Determine the new state (pure logic, no side-effects)
+	local new_state
+	if [ "$disabled" = "true" ] || [ "$disabled" = "1" ]; then
+		new_state="disabled"
+	elif [ "$up" = "false" ] || [ "$up" = "0" ] || [ -z "$up" ]; then
+		new_state="down"
+	elif [ "$client_count" -gt 0 ]; then
+		new_state="normal"
+	else
+		new_state="normal_no_clients"
+	fi
+
+	# Apply state transition: persist and fire webhooks only on change
+	[ "$last_state" = "$new_state" ] && return 0
+	echo "$new_state" >"$last_state_file"
+	case "$new_state" in
+		down)
+			notify "radio_down" "$ipaddr" "$radio_name" ;;
+		normal|normal_no_clients)
+			{ [ "$last_state" = "down" ] || [ "$last_state" = "unknown" ]; } && \
+				notify "radio_up" "$ipaddr" "$radio_name" ;;
+	esac
+}
+
+# Parse the JSON data file for a host and check connectivity for each radio
+process_radio_json() {
+	local ipaddr=$1
+	local cfg=$2
+
+	json_init
+	json_load_file "${BASEPATH}/${ipaddr}-${cfg}"
+
+	# Enter the radios section
+	json_select "radios"
+	json_get_keys "radios"
+
+	# For every radio, check connectivity
+	# Radios set in json_get_keys call
+	# shellcheck disable=SC2154
+	for radio in ${radios}; do
+		json_select "${radio}"
+
+		local _disabled _up
+		json_get_var _disabled "disabled"
+		json_get_var _up "up"
+
+		# Count clients for this radio
+		local radio_client_count=0 iidx sidx
+		json_select "interfaces"
+		iidx=1
+		while json_is_a "$iidx" object; do
+			json_select "$iidx"
+			json_select "stations"
+			sidx=1
+			while json_is_a "$sidx" object; do
+				radio_client_count=$((radio_client_count + 1))
+				sidx=$((sidx + 1))
+			done
+			json_select ..
+			json_select ..
+			iidx=$((iidx + 1))
+		done
+		json_select ..
+
+		# Check connectivity for this radio
+		check_connectivity "$ipaddr" "$cfg" "$radio" "$_disabled" "$_up" "$radio_client_count"
+
+		json_select ..
+	done
+
+	json_cleanup
+}
+
+# Called indirectly by config_foreach
+# shellcheck disable=SC2329
+get_data_from_host() {
+	local cfg="$1"
+
+	local enabled
+	config_get_bool enabled "$cfg" enabled 1
+	[ "$enabled" -gt 0 ] || return 0
+
+	local ipaddr
+	config_get ipaddr "$cfg" ipaddr
+	[ -z "$ipaddr" ] && return 0
+
+	local port
+	config_get port "$cfg" port 22
+
+	local name
+	config_get name "$cfg" name "$ipaddr"
+
+	# test connection - persistant SSH connection not honoring timeout
+	local device_responding=0
+	if ping -c 1 -W 3 "$ipaddr" > /dev/null 2>&1; then
+		# execute standard AP Info flow
+		cat /usr/share/apinfo/apinfo-agent | ssh -q -o StrictHostKeyChecking=no -o ConnectTimeout=3 -p "${port}" "${ipaddr}" "/bin/sh" > "${BASEPATH}/${ipaddr}-${cfg}.tmp" 2>/dev/null
+		
+		# Device is online if tmp is created
+		if [ -s "${BASEPATH}/${ipaddr}-${cfg}.tmp" ]; then
+			device_responding=1
+			
+			# move file to file location
+			mv "${BASEPATH}/${ipaddr}-${cfg}.tmp" "${BASEPATH}/${ipaddr}-${cfg}"
+			
+			process_radio_json "$ipaddr" "$cfg"
+		fi
+
+		# execute additional script
+		[ -s "${ADDITIONALSCRIPT}" ] && cat "${ADDITIONALSCRIPT}" | ssh -q -o StrictHostKeyChecking=no -o ConnectTimeout=3 -p "${port}" "${ipaddr}" "/bin/sh" 2>/dev/null
+	fi
+
+	# Fire webhook on device offline state transition
+	local device_state_file="${BASEPATH}/${ipaddr}-${cfg}-device"
+	local last_device_state=""
+	[ -f "$device_state_file" ] && read -r last_device_state < "$device_state_file"
+	if [ "$device_responding" = "0" ]; then
+		if [ "$last_device_state" != "offline" ]; then
+			echo "offline" >"$device_state_file"
+			notify "device_offline" "$ipaddr" "$name"
+		fi
+	else
+		if [ "$last_device_state" != "online" ]; then
+			echo "online" >"$device_state_file"
+			notify "device_online" "$ipaddr" "$name"
+		fi
+	fi
+
+	# log only day/hour
+	local NOW
+	NOW=$(date +%s -d "$(date +"%Y-%m-%d %H"):00")
+	touch "${BASEPATH}/${ipaddr}.txt"
+	grep -q "$NOW $device_responding" "${BASEPATH}/${ipaddr}.txt" || echo "$NOW $device_responding" >> "${BASEPATH}/${ipaddr}.txt"
+}
+
+mkdir -p "$BASEPATH"
+config_load apinfo
+config_foreach get_data_from_host host
+
+exit 0

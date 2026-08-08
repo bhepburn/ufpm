@@ -1,0 +1,10 @@
+#!/bin/sh
+# shellcheck shell=ash
+
+#desc:Reboot
+#warn
+
+ssh -q -o StrictHostKeyChecking=no -p "${1}" "${2}" << EOF
+reboot
+exit 0
+EOF

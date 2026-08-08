@@ -6,8 +6,6 @@ PKG_RELEASE:=1
 PKG_LICENSE:=GPL-2.0
 PKG_MAINTAINER:=Brent Hepburn <brent@hepburn.us>
 
-CMAKE_SOURCE_SUBDIR:=src
-
 include $(INCLUDE_DIR)/package.mk
 include $(INCLUDE_DIR)/cmake.mk
 
@@ -26,9 +24,6 @@ define Package/ufpm/description
   This package contains the ufpmd daemon and the uht ucode extension module.
   OUI vendor databases are fetched and compiled at runtime on first boot.
 endef
-
-CMAKE_OPTIONS += \
-	-DCMAKE_SKIP_RPATH=FALSE
 
 define Package/ufpm/install
 	$(INSTALL_DIR) $(1)/usr/lib/ucode $(1)/usr/share/ufpm/db

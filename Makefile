@@ -14,6 +14,7 @@ PKG_SOURCE_VERSION:=7d9f3beeac9fe7f4bbc339ea1f41cc485e5d6b97
 
 HOST_BUILD_DEPENDS:=ucode/host libubox/host
 PKG_BUILD_DEPENDS:=ufpm/host
+UCODE:=LD_LIBRARY_PATH=$(LD_LIBRARY_PATH):$(STAGING_DIR_HOSTPKG)/lib/:$(STAGING_DIR_HOST)/lib/ $(STAGING_DIR_HOSTPKG)/bin/ucode
 
 CMAKE_SOURCE_SUBDIR:=src
 
@@ -34,7 +35,7 @@ endef
 
 CMAKE_HOST_OPTIONS += \
 	-DCMAKE_SKIP_RPATH=FALSE \
-	-DCMAKE_INSTALL_RPATH="${STAGING_DIR_HOST}/lib"
+	-DCMAKE_INSTALL_RPATH=$(STAGING_DIR_HOST)/lib
 
 define Package/ufpm/install
 	$(INSTALL_DIR) $(1)/usr/lib/ucode $(1)/usr/share/ufpm $(1)/usr/sbin/

@@ -1,9 +1,0 @@
-#!/bin/sh
-# shellcheck shell=ash
-
-#desc:Log
-
-ssh -q -o StrictHostKeyChecking=no -p "${1}" "${2}" << EOF
-logread -l 100
-exit 0
-EOF

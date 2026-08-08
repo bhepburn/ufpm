@@ -35,11 +35,15 @@ endef
 
 CMAKE_HOST_OPTIONS += \
 	-DCMAKE_SKIP_RPATH=FALSE \
-	-DCMAKE_INSTALL_RPATH=$(STAGING_DIR_HOST)/lib
+	-DCMAKE_INSTALL_RPATH="${STAGING_DIR_HOST}/lib"
 
 define Package/ufpm/install
-	$(INSTALL_DIR) $(1)/usr/lib/ucode $(1)/usr/share/ufpm $(1)/usr/sbin/
+	$(INSTALL_DIR) $(1)/usr/lib/ucode $(1)/usr/share/ufp $(1)/usr/sbin/
 	$(INSTALL_DATA) $(PKG_INSTALL_DIR)/usr/lib/ucode/uht.so $(1)/usr/lib/ucode/
+	$(UCODE) $(PKG_BUILD_DIR)/scripts/convert-devices.uc $(1)/usr/share/ufp/devices.bin $(PKG_BUILD_DIR)/data/*.json
+	$(INSTALL_BIN) $(PKG_BUILD_DIR)/ufpd $(1)/usr/sbin
+	$(INSTALL_DATA) $(PKG_BUILD_DIR)/plugins/* $(1)/usr/share/ufp
+	$(CP) ./files/* $(1)/
 endef
 
 $(eval $(call BuildPackage,ufpm))
